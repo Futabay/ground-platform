@@ -1,0 +1,123 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: ground-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ground
+      POSTGRES_PASSWORD: ground
+      POSTGRES_DB: ground
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ground-net
+
+  # Kafka-compatible broker using Redpanda (no Zookeeper needed)
+  kafka:
+    container_name: ground-kafka
+    image: docker.redpanda.com/redpandadata/redpanda:v23.3.10
+    restart: unless-stopped
+    command:
+      - redpanda start
+      - --overprovisioned
+      - --smp 1
+      - --memory 1G
+      - --reserve-memory 0M
+      - --node-id 0
+      - --check=false
+      - --kafka-addr 0.0.0.0:9092
+      - --advertise-kafka-addr kafka:9092
+      - --set redpanda.auto_create_topics_enabled=true
+    ports:
+      - "9092:9092"
+      - "19092:19092"
+
+    networks:
+      - ground-net
+
+  api-gateway:
+    build:
+      context: ../..
+      dockerfile: backend/services/api-gateway/Dockerfile
+    container_name: ground-api-gateway
+    restart: unless-stopped
+    environment:
+      DB_HOST: postgres        # matches the postgres service name
+      DB_PORT: 5432
+      DB_USER: ground
+      DB_PASSWORD: ground
+      DB_NAME: ground
+    depends_on:
+      - postgres
+    ports:
+      - "8000:8000"            # http://localhost:8000
+    networks:
+      - ground-net
+
+  ingest-service:
+    build:
+      context: ../../backend/services/ingest-service
+    container_name: ground-ingest-service
+    restart: unless-stopped
+    environment:
+      KAFKA_BROKER: kafka:9092
+      TELEMETRY_TOPIC: telemetry.raw
+    depends_on:
+      - kafka
+    networks:
+      - ground-net
+
+  telemetry-processor:
+    build:
+      context: ../../backend/services/telemetry-processor
+    container_name: ground-telemetry-processor
+    restart: unless-stopped
+    environment:
+      KAFKA_BROKER: kafka:9092
+      TELEMETRY_TOPIC: telemetry.raw
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ground
+      DB_PASSWORD: ground
+      DB_NAME: ground
+    depends_on:
+      - kafka
+      - postgres
+    networks:
+      - ground-net
+
+  # Optional: Kafka UI to inspect topics/messages at http://localhost:8080
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: ground-kafka-ui
+    restart: unless-stopped
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      - kafka
+    ports:
+      - "9090:8080"
+    networks:
+      - ground-net
+
+  # OPTIONAL: Frontend dashboard placeholder for later
+  # dashboard:
+  #   build:
+  #     context: ../../frontend/dashboard
+  #   container_name: ground-dashboard
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - api-gateway
+  #   ports:
+  #     - "3000:4173"   # adjust if needed
+  #   networks:
+  #     - ground-net
+
+networks:
+  ground-net:
+
+volumes:
+  postgres_data:
