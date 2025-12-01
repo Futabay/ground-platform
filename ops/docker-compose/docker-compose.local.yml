@@ -104,17 +104,17 @@ services:
       - ground-net
 
   # OPTIONAL: Frontend dashboard placeholder for later
-  # dashboard:
-  #   build:
-  #     context: ../../frontend/dashboard
-  #   container_name: ground-dashboard
-  #   restart: unless-stopped
-  #   depends_on:
-  #     - api-gateway
-  #   ports:
-  #     - "3000:4173"   # adjust if needed
-  #   networks:
-  #     - ground-net
+  dashboard:
+    build:
+      context: ../../frontend/dashboard
+    container_name: ground-dashboard
+    restart: unless-stopped
+    depends_on:
+      - api-gateway
+    ports:
+      - "3000:80"   # adjust if needed
+    networks:
+      - ground-net
 
 networks:
   ground-net:
