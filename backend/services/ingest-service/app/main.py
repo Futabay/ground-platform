@@ -5,21 +5,23 @@ from datetime import datetime
 from random import random
 
 from confluent_kafka import Producer
-from pydantic import BaseModel
+# from pydantic import BaseModel
+from backend.libs.common.telemetry_models import TelemetryPoint  # via PYTHONPATH
+
 
 
 KAFKA_BROKER = os.getenv("KAFKA_BROKER", "kafka:9092")
 TELEMETRY_TOPIC = os.getenv("TELEMETRY_TOPIC", "telemetry.raw")
 
 
-class TelemetryMessage(BaseModel):
-    timestamp: datetime
-    satellite_id: str
-    subsystem: str
-    parameter: str
-    value: float
-    unit: str = "V"
-    status: str = "OK"
+# class TelemetryMessage(BaseModel):
+#     timestamp: datetime
+#     satellite_id: str
+#     subsystem: str
+#     parameter: str
+#     value: float
+#     unit: str = "V"
+#     status: str = "OK"
 
 
 def delivery_report(err, msg):

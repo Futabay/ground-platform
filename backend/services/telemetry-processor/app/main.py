@@ -8,6 +8,7 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy import create_engine, Column, String, Float, DateTime
 from sqlalchemy.orm import sessionmaker, DeclarativeBase, Session
 from sqlalchemy.exc import SQLAlchemyError
+from backend.libs.common.telemetry_models import TelemetryPoint  # shared model
 
 
 # ---- DB config ----
@@ -39,22 +40,22 @@ class TelemetryORM(Base):
     status = Column(String, nullable=False, default="OK")
 
 
-# Optional: ensure table exists (dev helper – in prod you'd use migrations)
-Base.metadata.create_all(bind=engine)
+# # Optional: ensure table exists (dev helper – in prod you'd use migrations)
+# Base.metadata.create_all(bind=engine)
 
 
-# ---- Kafka message schema ----
-class TelemetryMessage(BaseModel):
-    timestamp: datetime
-    satellite_id: str
-    subsystem: str
-    parameter: str
-    value: float
-    unit: str = "V"
-    status: str = "OK"
+# # ---- Kafka message schema ----
+# class TelemetryMessage(BaseModel):
+#     timestamp: datetime
+#     satellite_id: str
+#     subsystem: str
+#     parameter: str
+#     value: float
+#     unit: str = "V"
+#     status: str = "OK"
 
 
-def process_message(db: Session, msg: TelemetryMessage):
+def process_message(db: Session, msg: TelemetryPoint):
     obj = TelemetryORM(
         timestamp=msg.timestamp,
         satellite_id=msg.satellite_id,
@@ -94,7 +95,7 @@ def main():
 
             try:
                 payload = json.loads(msg.value().decode("utf-8"))
-                telemetry = TelemetryMessage(**payload)
+                telemetry = TelemetryPoint(**payload)
             except (json.JSONDecodeError, ValidationError) as e:
                 print(f"Failed to parse message: {e}")
                 continue
