@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, Float, DateTime
-from app.db.base import Base
+from backend.libs.db.base import Base
 
 
 class TelemetryORM(Base):

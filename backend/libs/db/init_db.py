@@ -1,6 +1,7 @@
 from sqlalchemy import text
-from app.db.base import Base
-from app.db.session import engine
+from backend.libs.db.base import Base
+from backend.libs.db.session import engine
+from backend.libs.models.telemetry import TelemetryORM  # noqa: F401  (needed to register model)
 
 
 def init_db():
@@ -25,7 +26,7 @@ def init_db():
             )
         )
 
-        conn.commit()
+        # conn.commit()
 
 
 if __name__ == "__main__":

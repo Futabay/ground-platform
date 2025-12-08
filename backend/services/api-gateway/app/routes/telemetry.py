@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from app.dependencies import get_db
-from app.models.telemetry import TelemetryORM
+from backend.libs.models.telemetry import TelemetryORM
 from backend.libs.common.telemetry_models import TelemetryPoint
 
 router = APIRouter()

@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: 'api-gateway'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['api-gateway:8000']
+
+  - job_name: 'ingest-service'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['ingest-service:8001']
+
+  - job_name: 'telemetry-processor'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['telemetry-processor:8002']
+
+  # Optional: add Kafka, Postgres if you expose /metrics there too

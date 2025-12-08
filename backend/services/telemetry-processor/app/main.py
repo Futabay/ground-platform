@@ -8,7 +8,12 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy import create_engine, Column, String, Float, DateTime
 from sqlalchemy.orm import sessionmaker, DeclarativeBase, Session
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import OperationalError
+
 from backend.libs.common.telemetry_models import TelemetryPoint  # shared model
+from backend.libs.db.init_db import init_db 
+
+from prometheus_client import Counter, Histogram, start_http_server
 
 
 # ---- DB config ----
@@ -44,15 +49,41 @@ class TelemetryORM(Base):
 # Base.metadata.create_all(bind=engine)
 
 
-# # ---- Kafka message schema ----
-# class TelemetryMessage(BaseModel):
-#     timestamp: datetime
-#     satellite_id: str
-#     subsystem: str
-#     parameter: str
-#     value: float
-#     unit: str = "V"
-#     status: str = "OK"
+# ---- Prometheus Metrics -----------------------------------------------------
+
+METRICS_PORT = int(os.getenv("METRICS_PORT", "8002"))
+
+TELEMETRY_CONSUMED = Counter(
+    "telemetry_consumed_total",
+    "Total number of telemetry messages consumed from Kafka",
+)
+
+TELEMETRY_PARSE_ERRORS = Counter(
+    "telemetry_parse_errors_total",
+    "Total number of telemetry messages that failed JSON/Pydantic validation",
+)
+
+TELEMETRY_DB_ERRORS = Counter(
+    "telemetry_db_errors_total",
+    "Total number of database errors during telemetry processing",
+)
+
+TELEMETRY_PROCESSING_TIME = Histogram(
+    "telemetry_processing_seconds",
+    "Time spent processing telemetry messages (including DB write)",
+)
+
+def wait_for_db(max_attempts: int = 10, delay: float = 2.0):
+    for attempt in range(1, max_attempts + 1):
+        try:
+            with engine.connect() as conn:
+                conn.execute("SELECT 1")
+            print("[telemetry-processor] Database is up.")
+            return
+        except OperationalError as e:
+            print(f"[telemetry-processor] DB not ready (attempt {attempt}/{max_attempts}): {e}")
+            time.sleep(delay)
+    raise RuntimeError("Database is not ready after multiple attempts.")
 
 
 def process_message(db: Session, msg: TelemetryPoint):
@@ -69,6 +100,12 @@ def process_message(db: Session, msg: TelemetryPoint):
 
 
 def main():
+    if os.getenv("INIT_DB", "false").lower() == "true":
+        wait_for_db()
+        init_db()
+    else:
+        wait_for_db()
+
     kafka_broker = os.getenv("KAFKA_BROKER", "kafka:9092")
     telemetry_topic = os.getenv("TELEMETRY_TOPIC", "telemetry.raw")
     group_id = os.getenv("KAFKA_GROUP_ID", "telemetry-processor-group")
@@ -83,6 +120,9 @@ def main():
     consumer.subscribe([telemetry_topic])
 
     print(f"[telemetry-processor] consuming from {telemetry_topic} on {kafka_broker}")
+    print(f"[telemetry-processor] exposing metrics on :{METRICS_PORT}/metrics")
+
+    start_http_server(METRICS_PORT)
 
     try:
         while True:
@@ -98,15 +138,20 @@ def main():
                 telemetry = TelemetryPoint(**payload)
             except (json.JSONDecodeError, ValidationError) as e:
                 print(f"Failed to parse message: {e}")
+                TELEMETRY_PARSE_ERRORS.inc()
                 continue
 
             db = SessionLocal()
             try:
-                process_message(db, telemetry)
-                db.commit()
+                with TELEMETRY_PROCESSING_TIME.time():
+                    process_message(db, telemetry)
+                    db.commit()
+                
+                TELEMETRY_CONSUMED.inc()  
                 consumer.commit(msg)
             except SQLAlchemyError as e:
                 db.rollback()
+                TELEMETRY_DB_ERRORS.inc()
                 print(f"DB error: {e}")
             finally:
                 db.close()

@@ -4,6 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routes.health import router as health_router
 from app.routes.telemetry import router as telemetry_router
 
+from prometheus_fastapi_instrumentator import Instrumentator
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title="Ground Data Platform API Gateway",
@@ -27,6 +29,8 @@ def create_app() -> FastAPI:
     # Include routes
     app.include_router(health_router, prefix="/health", tags=["Health"])
     app.include_router(telemetry_router, prefix="/telemetry", tags=["Telemetry"])
+
+    Instrumentator().instrument(app).expose(app)
 
     return app
 
