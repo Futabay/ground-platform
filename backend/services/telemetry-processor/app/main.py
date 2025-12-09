@@ -1,14 +1,14 @@
 import json
 import os
+import time
 from datetime import datetime
 
 from confluent_kafka import Consumer
 from pydantic import BaseModel, ValidationError
 
-from sqlalchemy import create_engine, Column, String, Float, DateTime
+from sqlalchemy import create_engine, Column, String, Float, DateTime, text
 from sqlalchemy.orm import sessionmaker, DeclarativeBase, Session
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import SQLAlchemyError, OperationalError
 
 from backend.libs.common.telemetry_models import TelemetryPoint  # shared model
 from backend.libs.db.init_db import init_db 
@@ -77,11 +77,15 @@ def wait_for_db(max_attempts: int = 10, delay: float = 2.0):
     for attempt in range(1, max_attempts + 1):
         try:
             with engine.connect() as conn:
-                conn.execute("SELECT 1")
+                conn.execute(text("SELECT 1"))
             print("[telemetry-processor] Database is up.")
             return
         except OperationalError as e:
             print(f"[telemetry-processor] DB not ready (attempt {attempt}/{max_attempts}): {e}")
+            time.sleep(delay)
+        except Exception as e:
+            # Log unexpected errors but keep retrying (optional)
+            print(f"[telemetry-processor] Unexpected DB error (attempt {attempt}/{max_attempts}): {e}")
             time.sleep(delay)
     raise RuntimeError("Database is not ready after multiple attempts.")
 
@@ -100,11 +104,10 @@ def process_message(db: Session, msg: TelemetryPoint):
 
 
 def main():
+    wait_for_db()
+    
     if os.getenv("INIT_DB", "false").lower() == "true":
-        wait_for_db()
-        init_db()
-    else:
-        wait_for_db()
+        init_db()   
 
     kafka_broker = os.getenv("KAFKA_BROKER", "kafka:9092")
     telemetry_topic = os.getenv("TELEMETRY_TOPIC", "telemetry.raw")
